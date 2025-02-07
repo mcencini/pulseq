@@ -36,6 +36,7 @@ obj.rfLibrary = mr.EventLibrary();
 obj.adcLibrary = mr.EventLibrary();
 %obj.delayLibrary = mr.EventLibrary();
 obj.trigLibrary = mr.EventLibrary();
+obj.rotationLibrary = mr.EventLibrary();
 obj.labelsetLibrary = mr.EventLibrary();
 obj.labelincLibrary = mr.EventLibrary();
 obj.extensionStringIDs={};
@@ -129,6 +130,10 @@ while true
                 id=str2num(section(19:end));
                 obj.setExtensionStringAndID('TRIGGERS',id);
                 obj.trigLibrary = readEvents(fid, [1 1 1e-6 1e-6]);
+            elseif strncmp('extension ROTATIONS', section, 19) 
+                id=str2num(section(20:end));
+                obj.setExtensionStringAndID('ROTATIONS',id);
+                obj.rotationLibrary = readEvents(fid, [1 1 1 1 1 1 1 1 1]);
             elseif strncmp('extension LABELSET', section, 18) 
                 id=str2num(section(19:end));
                 obj.setExtensionStringAndID('LABELSET',id);

@@ -228,6 +228,7 @@ classdef SeqPlot < handle
                             p2=plot(tFactor*(t0+t+rf.delay),  angle(s*exp(1i*rf.phaseOffset).*exp(1i*2*pi*t    *rf.freqOffset)), tFactor*(t0+tc+rf.delay), angle(sc*exp(1i*rf.phaseOffset).*exp(1i*2*pi*tc*rf.freqOffset)),'xb', 'Parent',obj.ax(3));
                         end                        
                     end
+                    waveform = struct();
                     for j=1:length(gradChannels)
                         grad=block.(gradChannels{j});
                         if ~isempty(grad)
@@ -237,12 +238,20 @@ classdef SeqPlot < handle
                                 % making the display a bit less confusing...
                                 %t=grad.delay + [0; grad.t + (grad.t(2)-grad.t(1))/2; grad.t(end) + grad.t(2)-grad.t(1)];
                                 t= grad.delay+[0; grad.tt; grad.shape_dur];
-                                waveform=1e-3* [grad.first; grad.waveform; grad.last];
+                                waveform.(gradChannels{j})=1e-3* [grad.first; grad.waveform; grad.last];
                             else
                                 t=cumsum([0 grad.delay grad.riseTime grad.flatTime grad.fallTime]);
-                                waveform=1e-3*grad.amplitude*[0 0 1 1 0];
+                                waveform.(gradChannels{j})=1e-3*grad.amplitude*[0 0 1 1 0];
                             end
-                            p=plot(tFactor*(t0+t),waveform,'Parent',obj.ax(3+j));
+                        end
+                    end
+                    % Rotate current block gradients
+                    if isfield(block, 'rotation')
+                        waveform=mr.aux.rotate_array(waveform, block.rotation.rotMatrix);
+                    end
+                    for j=1:length(gradChannels)
+                        if isfield(waveform, gradChannels{j})
+                            p=plot(tFactor*(t0+t),waveform.(gradChannels{j}),'Parent',obj.ax(3+j));
                         end
                     end
                 end

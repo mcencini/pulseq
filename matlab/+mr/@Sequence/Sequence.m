@@ -49,6 +49,7 @@ classdef Sequence < handle
         gradLibrary;      % Library of gradient events
         adcLibrary;       % Library of ADC readouts
         trigLibrary;      % Library of trigger events ( referenced from the extentions library )
+        rotationLibrary;  % Library of rotation events ( referenced from the extentions library )
         labelsetLibrary;  % Library of Label(set) events ( reference from the extensions library )
         labelincLibrary;  % Library of Label(inc) events ( reference from the extensions library )
         extensionLibrary; % Library of extension events. Extension events form single-linked zero-terminated lists
@@ -78,6 +79,7 @@ classdef Sequence < handle
             obj.rfLibrary = mr.EventLibrary();
             obj.adcLibrary = mr.EventLibrary();
             obj.trigLibrary = mr.EventLibrary();
+            obj.rotationLibrary = mr.EventLibrary();
             obj.labelsetLibrary = mr.EventLibrary();
             obj.labelincLibrary = mr.EventLibrary();
             obj.extensionLibrary = mr.EventLibrary();
@@ -107,6 +109,7 @@ classdef Sequence < handle
             obj.gradID2NameMap = containers.Map('KeyType', 'int32', 'ValueType', 'char'); 
         end
         
+        % see gradCheck.m
         
         % See read.m
         read(obj,filename,varargin)
@@ -122,7 +125,6 @@ classdef Sequence < handle
         
         % See writeBinary.m
         writeBinary(obj,filename);
-        
         
         % See calcPNS.m
         [ok, pns_norm, pns_comp, t_axis]=calcPNS(obj,hardware,doPlots,calcCNS)
@@ -590,6 +592,15 @@ classdef Sequence < handle
             end
         end
         
+        function id=registerRotationEvent(obj, event)
+            % registerRotationEvent : Add the event to the libraries (object,
+            % shapes, etc and return the event's ID. This ID should be 
+            % stored in the object to accelerate addBlock()
+            data=event.rotMatrix';
+            data=data(:);
+            id = obj.rotationLibrary.find_or_insert(data);
+        end
+        
         %TODO: Replacing blocks in the middle of sequence can cause unused
         %events in the libraries. These can be detected and pruned.
         function setBlock(obj, index, varargin)
@@ -710,6 +721,14 @@ classdef Sequence < handle
                                 extensions=[extensions ext];
                                 duration=max(duration,e.delay+e.duration);
                             end
+                        case 'rotation'
+                            if isfield(event,'id')
+                                id=event.id;
+                            else
+                                id=obj.registerRotationEvent(event);
+                            end
+                            ext=struct('type', obj.getExtensionTypeID('ROTATIONS'), 'ref', id);
+                            extensions=[extensions ext];    
                         case {'labelset','labelinc'}
                             for e=event % allow multiple extensions as an array
                                 if isfield(e,'id')
@@ -785,51 +804,12 @@ classdef Sequence < handle
             %%% PERFORM GRADIENT CHECKS                                 %%%
             %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
             
-            % check if connection to the previous block is correct using check_g
-            for cg_temp = check_g
-                cg=cg_temp{1}; % cg_temp is still a cell-array with a single element here...
-                if isempty(cg), continue; end
-                
-                % check the start 
-                if abs(cg.start(2)) > obj.sys.maxSlew * obj.sys.gradRasterTime % MZ: we only need the following check if the current gradient starts at non-0
-                    if cg.start(1) ~= 0
-                        error('Error in block %d: No delay allowed for gradients which start with a non-zero amplitude', index);
-                    end
-                    if index > 1
-                        [~,prev_nonempty_block]=find(obj.blockDurations(1:(index-1))>0, 1, 'last');
-                        prev_id = obj.blockEvents{prev_nonempty_block}(cg.idx);
-                        if prev_id ~= 0
-                            prev_lib = obj.gradLibrary.get(prev_id); % MZ: for performance reasons we access the gradient library directly. I know, this is not elegant 
-                            prev_dat = prev_lib.data;
-                            prev_type = prev_lib.type;
-                            if prev_type == 't'
-                                error('Error in block %d: Two consecutive gradients need to have the same amplitude at the connection point, this is not possible if the previous gradient is a simple trapezoid', index);
-                            elseif prev_type == 'g'
-                                last = prev_dat(6); % '6' means last; MZ: I know, this is a real hack...
-                                if abs(last - cg.start(2)) > obj.sys.maxSlew * obj.sys.gradRasterTime
-                                    error('Error in block %d: Two consecutive gradients need to have the same amplitude at the connection point', index);
-                                end
-                            end
-                        else
-                            error('Error in block %d: Gradient starting at non-zero value need to be preceded by a comptible gradient', index);
-                        end
-                    else                   
-                        error('First gradient in the the first block has to start at 0.');
-                    end
-                end
-                
-                % Check if gradients, which do not end at 0, are as long as the block itself.
-                if cg.stop(2) > obj.sys.maxSlew * obj.sys.gradRasterTime && abs(cg.stop(1)-duration) > 1e-7
-                    error('Error in block %d: A gradient that doesn''t end at zero needs to be aligned to the block boundary', index);
-                end
-            end
-            
+            obj.gradCheck(index, event, check_g);
+
             %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
             %%% GRADIENT CHECKS DONE                                    %%%
             %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-            
-            
             if ~isempty(required_duration)
                 if duration-required_duration>eps
                     error('Required block duration is %g s but actuall block duration is %g s', required_duration, duration);
@@ -931,6 +911,16 @@ classdef Sequence < handle
                         trig.duration = data(4);
                         % we allow for multiple triggers per block
                         block.trig(i)=trig;
+                    end
+                end
+                % unpack rotations
+                rot_ext=raw_block.ext(2,raw_block.ext(1,:)==obj.getExtensionTypeID('ROTATIONS'));
+                if ~isempty(rot_ext)
+                    for i=length(rot_ext):-1:1 % backwards for preallocation
+                        data = obj.rotationLibrary.data(rot_ext(i)).array;
+                        rotation.type = 'rotation';
+                        rotation.rotMatrix = reshape(data, 3, 3).'; % MATLAB reshapes in fortran order
+                        block.rotation(i)=rotation;
                     end
                 end
                 % unpack labels
@@ -1555,6 +1545,7 @@ classdef Sequence < handle
             out_len=zeros(1,shape_channels); % the last "channel" is RF
             for iBc=blockRange(1):blockRange(2)
                 block = obj.getBlock(iBc);
+                shape_tmp = struct();
                 iP=iP+1;
                 for j=1:length(gradChannels)
                     grad=block.(gradChannels{j});
@@ -1575,22 +1566,22 @@ classdef Sequence < handle
                                 [tt_chg, waveform_chg] = mr.restoreAdditionalShapeSamples(grad.tt,grad.waveform,grad.first,grad.last,obj.gradRasterTime,iBc);
                                 
                                 out_len(j)=out_len(j)+length(tt_chg);
-                                shape_pieces{j,iP}=[curr_dur+grad.delay+tt_chg; waveform_chg];%curr_dur+grad.delay+tgc;
+                                shape_tmp.(gradChannels{j})=[curr_dur+grad.delay+tt_chg; waveform_chg];%curr_dur+grad.delay+tgc;
                             else
                                 % extended trapezoid (the easy case!)
                                 out_len(j)=out_len(j)+length(grad.tt);
-                                shape_pieces{j,iP}=[curr_dur+grad.delay+grad.tt'; grad.waveform'];
+                                shape_tmp.(gradChannels{j})=[curr_dur+grad.delay+grad.tt'; grad.waveform'];
                             end
                         else
                             if (abs(grad.flatTime)>eps) % interp1 gets confused by triangular gradients (repeating sample)
                                 out_len(j)=out_len(j)+4;
-                                shape_pieces{j,iP}=[
+                                shape_tmp.(gradChannels{j})=[
                                     curr_dur+grad.delay+cumsum([0 grad.riseTime grad.flatTime grad.fallTime]);...
                                     grad.amplitude*[0 1 1 0]];
                             else
                                 if (abs(grad.riseTime)>eps && abs(grad.fallTime)>eps) % we skip 'empty' gradients
                                     out_len(j)=out_len(j)+3;
-                                    shape_pieces{j,iP}=[
+                                    shape_tmp.(gradChannels{j})=[
                                         curr_dur+grad.delay+cumsum([0 grad.riseTime grad.fallTime]);...
                                         grad.amplitude*[0 1 0]];
                                 else
@@ -1600,6 +1591,24 @@ classdef Sequence < handle
                                 end
                             end
                         end
+                    end
+                end
+                % Rotate current block gradients
+                if isfield(block, 'rotation')
+                    time_tmp = {};
+                    grad_tmp = struct();
+                    for j=1:length(gradChannels)
+                        time_tmp{j}=shape_tmp.(gradChannels{j})(1,:);
+                        grad_tmp.(gradChannels{j})=shape_tmp.(gradChannels{j})(2,:);
+                    end
+                    grad_tmp = mr.aux.rotate_array(grad_tmp, block.rotation.rotMatrix);
+                    for j=1:length(gradChannels)
+                        shape_tmp.(gradChannels{j}) = [time_tmp; grad_tmp.(gradChannels{j})];
+                    end
+                end
+                for j=1:length(gradChannels)
+                    if isfield(shape_tmp, gradChannels{j})
+                        shape_pieces{j,iP}=shape_tmp.(gradChannels{j});
                     end
                 end
                 if ~isempty(block.rf)

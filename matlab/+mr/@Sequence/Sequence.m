@@ -635,6 +635,7 @@ classdef Sequence < handle
             
             % Loop over events adding to library if necessary and creating
             % block event structure.
+            rotEvent = {};
             for i = 1:length(varargin)
                 event = varargin{i};
                 if isstruct(event)
@@ -722,13 +723,14 @@ classdef Sequence < handle
                                 duration=max(duration,e.delay+e.duration);
                             end
                         case 'rotation'
+                            rotEvent = event;
                             if isfield(event,'id')
                                 id=event.id;
                             else
                                 id=obj.registerRotationEvent(event);
                             end
                             ext=struct('type', obj.getExtensionTypeID('ROTATIONS'), 'ref', id);
-                            extensions=[extensions ext];    
+                            extensions=[extensions ext];  
                         case {'labelset','labelinc'}
                             for e=event % allow multiple extensions as an array
                                 if isfield(e,'id')
@@ -804,7 +806,7 @@ classdef Sequence < handle
             %%% PERFORM GRADIENT CHECKS                                 %%%
             %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
             
-            obj.gradCheck(index, event, check_g);
+            obj.gradCheck(index, check_g, duration, rotEvent);
 
             %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
             %%% GRADIENT CHECKS DONE                                    %%%

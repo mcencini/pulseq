@@ -22,4 +22,4 @@ jobs:
       - name: Run tests
         uses: matlab-actions/run-command@v2
         with:
-          command: addpath(genpath("matlab")), results = runtests('tests'), assert(false);
+          command: addpath(genpath("matlab")), results = runtests('tests'), assert(sum([results.Failed]) == 0);

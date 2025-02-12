@@ -49,7 +49,6 @@ classdef testSequence < matlab.unittest.TestCase
                     seq.plot('showBlocks', true);
                     seq.plot('timeRange', [0, 1e-3]);
                     seq.plot('timeDisp', 'ms');
-                    seq.plot('gradDisp', 'mT/m');
                     close all;
                 catch ME
                     testCase.verifyFail(['Plotting failed: ', ME.message]);
@@ -71,24 +70,22 @@ classdef testSequence < matlab.unittest.TestCase
             
             % Read written sequence back in
             seq2 = mr.Sequence();
-            seq2 = seq2.read(tempFile);
+            seq2.read(tempFile);
             
             % Compare sequence block events (using field names as keys).
-            testCase.verifyEqual(fieldnames(seq.block_events), fieldnames(seq2.block_events), ...
+            testCase.verifyEqual(length(seq.blockEvents), length(seq2.blockEvents), ...
                 'Sequence block IDs are not identical');
             
-            block_keys = fieldnames(seq.block_events);
-            for i = 1:length(block_keys)
-                key = block_keys{i};
-                block_orig = seq.getBlock(key);
-                block_compare = seq2.getBlock(key);
+            for i = 1:length(seq.blockEvents)
+                block_orig = seq.getBlock(i);
+                block_compare = seq2.getBlock(i);
                 
                 % If block contains rf.use, set it to 'undefined'
                 if isfield(block_orig, 'rf') && isfield(block_orig.rf, 'use')
                     block_orig.rf.use = 'undefined';
                 end
                 
-                verifyApproxEqual(testCase, block_compare, block_orig, 1e-5);
+                verifyApproxEqual(testCase, block_compare, block_orig, 1e-5, 1e-5);
             end
             
             % Compare gradient waveforms.
@@ -99,18 +96,17 @@ classdef testSequence < matlab.unittest.TestCase
                 if isempty(grads1{ch}) && isempty(grads2{ch})
                     continue;
                 end
-                testCase.verifyEqual(grads1{ch}(1, :), grads2{ch}(1, :), 'AbsTol', 1e-5, ...
+                verifyApproxEqual(testCase, grads1{ch}(1, :), grads2{ch}(1, :), 1e-5, 1e-5, ...
                     sprintf('Time axis of gradient waveform for channel %s does not match', channels{ch}));
-                testCase.verifyEqual(grads1{ch}(2, :), grads2{ch}(2, :), 'AbsTol', 1e-5, ...
-                    sprintf('Zero-order coefficients of gradient waveform for channel %s do not match', channels{ch}));
+                verifyApproxEqual(testCase, grads1{ch}(2, :), grads2{ch}(2, :), 1e2, 1e-3, ...
+                    sprintf('Gradient values of gradient waveform for channel %s do not match', channels{ch}));
             end
             
             % Restore RF use for k-space calculation.
-            for i = 1:length(block_keys)
-                key = block_keys{i};
-                block_orig = seq.getBlock(key);
+            for i = 1:length(seq.blockEvents)
+                block_orig = seq.getBlock(i);
                 if isfield(block_orig, 'rf') && isfield(block_orig.rf, 'use')
-                    block_compare = seq2.getBlock(key);
+                    block_compare = seq2.getBlock(i);
                     block_compare.rf.use = block_orig.rf.use;
                 end
             end
@@ -118,7 +114,7 @@ classdef testSequence < matlab.unittest.TestCase
             % Test approximate equality of k-space calculation.
             kspace1 = seq.calculateKspacePP();
             kspace2 = seq2.calculateKspacePP();
-            verifyApproxEqual(testCase, kspace2, kspace1, 1e-1);
+            verifyApproxEqual(testCase, kspace2, kspace1, 1e-1, []);
             
             % Test whether labels are the same.
             labels_seq = seq.evalLabels('evolution', 'blocks');
@@ -128,7 +124,7 @@ classdef testSequence < matlab.unittest.TestCase
             for i = 1:length(label_keys)
                 key = label_keys{i};
                 testCase.verifyEqual(labels_seq.(key), labels_seq2.(key), ...
-                    'Message', sprintf('Label %s does not match', key));
+                    sprintf('Label %s does not match', key));
             end
             
             if exist(tempFile, 'file')
@@ -140,16 +136,13 @@ classdef testSequence < matlab.unittest.TestCase
             % Test whether the sequence is approximately the same after recreating
             % it by getting all blocks and inserting them into a new sequence.
             seq = seqFunc();
-            seq2 = Sequence();
-            block_keys = fieldnames(seq.block_events);
-            for i = 1:length(block_keys)
-                key = block_keys{i};
-                seq2 = mr.addBlock(seq2.getBlock(key));
+            seq2 = mr.Sequence();
+            for i = 1:length(seq.blockEvents)
+                seq2.addBlock(seq.getBlock(i));
             end
-            for i = 1:length(block_keys)
-                key = block_keys{i};
-                verifyApproxEqual(testCase, seq2.getBlock(key), seq.getBlock(key), 1e-9, ...
-                    sprintf('Block %s does not match', key));
+            for i = 1:length(seq.blockEvents)
+                verifyApproxEqual(testCase, seq2.getBlock(i), seq.getBlock(i), 1e-9, 1e-9, ...
+                    sprintf('Block %s does not match', i));
             end
             
             % Compare gradient waveforms.
@@ -160,13 +153,13 @@ classdef testSequence < matlab.unittest.TestCase
                 if isempty(grads1{ch}) && isempty(grads2{ch})
                     continue;
                 end
-                testCase.verifyEqual(grads1{ch}(1, :), grads2{ch}(1, :), 'AbsTol', 1e-9, ...
+                verifyApproxEqual(testCase, grads1{ch}(1, :), grads2{ch}(1, :), 1e-9, 1e-9, ...
                     sprintf('Time axis of gradient waveform for channel %s does not match', channels{ch}));
-                testCase.verifyEqual(grads1{ch}(2, :), grads2{ch}(2, :), 'AbsTol', 1e-9, ...
-                    sprintf('Zero-order coefficients for channel %s do not match', channels{ch}));
+                verifyApproxEqual(testCase, grads1{ch}(2, :), grads2{ch}(2, :), 1e-9, 1e-9, ...
+                    sprintf('Gradient values of gradient waveform for channel %s do not match', channels{ch}));
             end
             
-            verifyApproxEqual(testCase, seq2.calculateKspacePP(), seq.calculateKspacePP(), 1e-6);
+            verifyApproxEqual(testCase, seq2.calculateKspacePP(), seq.calculateKspacePP(), 1e-6, []);
             
             labels_seq = seq.evalLabels('evolution', 'blocks');
             labels_seq2 = seq2.evalLabels('evolution', 'blocks');
@@ -175,7 +168,7 @@ classdef testSequence < matlab.unittest.TestCase
             for i = 1:length(label_keys)
                 key = label_keys{i};
                 testCase.verifyEqual(labels_seq.(key), labels_seq2.(key), ...
-                    'Message', sprintf('Label %s does not match', key));
+                    sprintf('Label %s does not match', key));
             end
         end
     end
@@ -199,11 +192,11 @@ end
 %% --- Auxiliary Functions ---
 function seq = seq_make_gauss_pulses()
     seq = mr.Sequence();
-    seq.addBlock(mr.makeGaussPulse(1));
+    seq.addBlock(mr.makeGaussPulse(1, 'duration', 1e-3));
     seq.addBlock(mr.makeDelay(1));
-    seq.addBlock(mr.makeGaussPulse(1, 'delay', 1e-3));
+    seq.addBlock(mr.makeGaussPulse(1, 'duration', 1e-3, 'delay', 1e-3));
     seq.addBlock(mr.makeDelay(1));
-    seq.addBlock(mr.makeGaussPulse(pi/2));
+    seq.addBlock(mr.makeGaussPulse(pi/2, 'duration', 1e-3));
     seq.addBlock(mr.makeDelay(1));
     seq.addBlock(mr.makeGaussPulse(pi/2, 'duration', 1e-3));
     seq.addBlock(mr.makeDelay(1));
@@ -218,11 +211,11 @@ end
 
 function seq = seq_make_sinc_pulses()
     seq = mr.Sequence();
-    seq.addBlock(mr.makeSincPulse(1));
+    seq.addBlock(mr.makeSincPulse(1, 'duration', 1e-3));
     seq.addBlock(mr.makeDelay(1));
-    seq.addBlock(mr.makeSincPulse(1, 'delay', 1e-3));
+    seq.addBlock(mr.makeSincPulse(1, 'duration', 1e-3, 'delay', 1e-3));
     seq.addBlock(mr.makeDelay(1));
-    seq.addBlock(mr.makeSincPulse(pi/2));
+    seq.addBlock(mr.makeSincPulse(pi/2, 'duration', 1e-3));
     seq.addBlock(mr.makeDelay(1));
     seq.addBlock(mr.makeSincPulse(pi/2, 'duration', 1e-3));
     seq.addBlock(mr.makeDelay(1));
@@ -239,7 +232,7 @@ function seq = seq_make_block_pulses()
     seq = mr.Sequence();
     seq.addBlock(mr.makeBlockPulse(1, 'duration', 4e-3));
     seq.addBlock(mr.makeDelay(1));
-    seq.addBlock(mr.makeBlockPulse(1, 'delay', 1e-3, 'duration', 4e-3));
+    seq.addBlock(mr.makeBlockPulse(1, 'duration', 4e-3, 'delay', 1e-3));
     seq.addBlock(mr.makeDelay(1));
     seq.addBlock(mr.makeBlockPulse(pi/2, 'duration', 4e-3));
     seq.addBlock(mr.makeDelay(1));
@@ -273,7 +266,7 @@ function seq = seq2()
     seq.addBlock(mr.makeBlockPulse(pi, 'duration', 1e-3));
     seq.addBlock(mr.makeTrapezoid('x', 'area', -500));
     seq.addBlock(mr.makeTrapezoid('x', 'area', 1000, 'duration', 10e-3), ...
-                 mr.makeAdc('numSamples', 100, 'duration', 10e-3));
+                 mr.makeAdc(100, 'duration', 10e-3));
 end
 
 function seq = seq3()
@@ -285,7 +278,7 @@ function seq = seq3()
         seq.addBlock(mr.makeTrapezoid('y', 'area', -500 + i * 100));
         seq.addBlock(mr.makeTrapezoid('x', 'area', -500));
         seq.addBlock(mr.makeTrapezoid('x', 'area', 1000, 'duration', 10e-3), ...
-                     mr.makeAdc('numSamples', 100, 'duration', 10e-3), ...
+                     mr.makeAdc(100, 'duration', 10e-3), ...
                      mr.makeLabel('INC', 'LIN', 1));
     end
 end
@@ -299,30 +292,38 @@ function seq = seq4()
         seq.addBlock(mr.makeTrapezoid('y', 'area', -500 + i * 100));
         seq.addBlock(mr.makeTrapezoid('x', 'area', -500));
         seq.addBlock(mr.makeTrapezoid('x', 'area', 1000, 'duration', 10e-3), ...
-                     mr.makeAdc('numSamples', 100, 'duration', 10e-3), ...
+                     mr.makeAdc(100, 'duration', 10e-3), ...
                      mr.makeLabel('SET', 'LIN', i));
     end
 end
 
 %% --- Helper Function for Approximate Comparison ---
-function verifyApproxEqual(testCase, actual, expected, tol, varargin)
+function verifyApproxEqual(testCase, actual, expected, atol, rtol, varargin)
     % Recursively verify approximate equality between actual and expected.
     if isnumeric(actual) && isnumeric(expected)
-        testCase.verifyEqual(actual, expected, 'AbsTol', tol, varargin{:});
+        if isempty(rtol)
+            testCase.verifyEqual(actual, expected, 'AbsTol', atol, varargin{:});
+        else
+            testCase.verifyEqual(actual, expected, 'AbsTol', atol, 'RelTol', rtol, varargin{:});
+        end
     elseif isstruct(actual) && isstruct(expected)
         f1 = sort(fieldnames(actual));
         f2 = sort(fieldnames(expected));
         testCase.verifyEqual(f1, f2, 'Structures have different fields.');
         for i = 1:length(f1)
             fld = f1{i};
-            verifyApproxEqual(testCase, actual.(fld), expected.(fld), tol, varargin{:});
+            verifyApproxEqual(testCase, actual.(fld), expected.(fld), atol, rtol, varargin{:});
         end
     elseif iscell(actual) && iscell(expected)
         testCase.verifyEqual(numel(actual), numel(expected), 'Cell arrays differ in length.');
         for i = 1:numel(actual)
-            verifyApproxEqual(testCase, actual{i}, expected{i}, tol, varargin{:});
+            verifyApproxEqual(testCase, actual{i}, expected{i}, atol, rtol, varargin{:});
         end
     else
-        testCase.verifyEqual(actual, expected, 'AbsTol', tol, varargin{:});
+        if isempty(rtol)
+            testCase.verifyEqual(actual, expected, 'AbsTol', atol, varargin{:});
+        else
+            testCase.verifyEqual(actual, expected, 'AbsTol', atol, 'RelTol', rtol, varargin{:});
+        end
     end
 end

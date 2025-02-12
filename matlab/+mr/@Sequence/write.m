@@ -168,7 +168,7 @@ if ~isempty(obj.rotationLibrary.keys)
     keys = obj.rotationLibrary.keys;
     for k = keys
         fprintf(fid, '%d %12g %12g %12g %12g %12g %12g %12g %12g %12g\n', ...
-                [k obj.rotationLibrary.data(k).array]); 
+                [k obj.rotationLibrary.data(k).array']); 
     end
     fprintf(fid, '\n');
 end

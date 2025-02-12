@@ -905,7 +905,7 @@ classdef Sequence < handle
                             trig.channel=trigger_channels{data(2)};
                         elseif (data(1)==2)
                             trigger_channels={'physio1','physio2'}; 
-                            trig.channel=trigger_channels{data(2)};;
+                            trig.channel=trigger_channels{data(2)};
                         else
                             error('unsupported trigger event type');
                         end
@@ -944,9 +944,10 @@ classdef Sequence < handle
                         block.label(i) = label;
                     end
                 end
-                if length(trig_ext)+size(label_ext,2)~=size(raw_block.ext,2)
+                if length(trig_ext)+size(label_ext,2)+size(rot_ext)~=size(raw_block.ext,2)
                     for i=1:size(raw_block.ext,2)
                         if raw_block.ext(1,i)~=obj.getExtensionTypeID('TRIGGERS') && ...
+                           raw_block.ext(1,i)~=obj.getExtensionTypeID('ROTATIONS') && ...
                            raw_block.ext(1,i)~=obj.getExtensionTypeID('LABELSET') && ...
                            raw_block.ext(1,i)~=obj.getExtensionTypeID('LABELSET')
                             error('unknown extension ID %d', raw_block.ext(1,i));
@@ -1600,12 +1601,17 @@ classdef Sequence < handle
                     time_tmp = {};
                     grad_tmp = struct();
                     for j=1:length(gradChannels)
-                        time_tmp{j}=shape_tmp.(gradChannels{j})(1,:);
-                        grad_tmp.(gradChannels{j})=shape_tmp.(gradChannels{j})(2,:);
+                        if isfield(shape_tmp, gradChannels{j})
+                            time_tmp=shape_tmp.(gradChannels{j})(1,:);
+                            grad_tmp.(gradChannels{j})=shape_tmp.(gradChannels{j})(2,:);
+                        end
                     end
                     grad_tmp = mr.aux.rotate_array(grad_tmp, block.rotation.rotMatrix);
+                    shape_tmp = struct();
                     for j=1:length(gradChannels)
-                        shape_tmp.(gradChannels{j}) = [time_tmp; grad_tmp.(gradChannels{j})];
+                        if isfield(grad_tmp, gradChannels{j})
+                            shape_tmp.(gradChannels{j}) = [time_tmp; grad_tmp.(gradChannels{j})];
+                        end
                     end
                 end
                 for j=1:length(gradChannels)

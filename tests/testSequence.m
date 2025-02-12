@@ -65,7 +65,7 @@ classdef testSequence < matlab.unittest.TestCase
             tempFile = fullfile(tempdir, [seq_name, '.seq']);
             seq = seqFunc();
             
-            % Write sequence to fule
+            % Write sequence to file
             seq.write(tempFile);
             
             % Read written sequence back in

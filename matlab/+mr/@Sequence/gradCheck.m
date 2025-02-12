@@ -99,9 +99,9 @@ if do_check && index > 1
 
     % Get previous block rotation matrix
     ext_id = obj.blockEvents{prev_nonempty_block}(end);
-    while ext_id || not(previous_has_rot)
+    while ext_id && not(previous_has_rot)
         try
-            ext = obj.extensionLibrary.get(ext_id);
+            ext = obj.extensionLibrary.data(ext_id).array;
             if ext(1) == rot_type_id
                 previous_has_rot = true;
                 previous_rotmat = obj.rotationLibrary.data(ext(2)).array;
@@ -116,7 +116,8 @@ if do_check && index > 1
 
     % Rotate last gradient
     if previous_has_rot
-        prev_grad_last = previous_rotmat * prev_grad_last;
+        prev_grad_last = previous_rotmat * prev_grad_last';
+        prev_grad_last = prev_grad_last';
     end
 
     % Look up the first gradient value in current block
@@ -129,7 +130,8 @@ if do_check && index > 1
 
     % Rotate current gradient
     if current_has_rot
-        curr_grad_first = rotEvent.rotation.rotMatrix * curr_grad_first;
+        curr_grad_first = rotEvent.rotMatrix * curr_grad_first';
+        curr_grad_first = curr_grad_first';
     end
 
     % Do comparison

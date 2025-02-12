@@ -49,19 +49,19 @@ classdef testRotationExtension < matlab.unittest.TestCase
             % (Additional verification could be added here.)
         end
         
-%         function test_plot(testCase)
-%             % Test that the sequence can be plotted without errors.
-%             seq = seq_make_radial();
-%             try
-%                 seq.plot();
-%                 seq.plot('showBlocks', true);
-%                 seq.plot('timeRange', [0, 1e-3]);
-%                 seq.plot('timeDisp', 'ms');
-%                 close all;
-%             catch ME
-%                 testCase.verifyFail(['Plotting failed: ', ME.message]);
-%             end
-%         end
+        function test_plot(testCase)
+            % Test that the sequence can be plotted without errors.
+            seq = seq_make_radial();
+            try
+                seq.plot();
+                seq.plot('showBlocks', true);
+                seq.plot('timeRange', [0, 1e-3]);
+                seq.plot('timeDisp', 'ms');
+                close all;
+            catch ME
+                testCase.verifyFail(['Plotting failed: ', ME.message]);
+            end
+        end
         
         function test_writeread(testCase)
             % Test that writing a sequence to file and reading it back

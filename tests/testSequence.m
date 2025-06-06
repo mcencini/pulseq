@@ -27,6 +27,7 @@ classdef testSequence < matlab.unittest.TestCase
             end
             seq = seqFunc();
             seq_name = func2str(seqFunc);
+            
             % Determine expected output file path relative to this file.
             testFileDir = fileparts(mfilename('fullpath'));
             expectedDir = fullfile(testFileDir, 'expected_output');
